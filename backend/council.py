@@ -1,24 +1,40 @@
 """3-stage LLM Council orchestration."""
 
-from typing import List, Dict, Any, Tuple
+import time
+from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .posthog_analytics import get_analytics
 
 
-async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
+async def stage1_collect_responses(
+    user_query: str,
+    conversation_id: Optional[str] = None,
+    session_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
     Args:
         user_query: The user's question
+        conversation_id: Optional conversation ID for analytics tracking
+        session_id: Optional session ID for analytics tracking
 
     Returns:
         List of dicts with 'model' and 'response' keys
     """
+    start_time = time.time()
     messages = [{"role": "user", "content": user_query}]
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    responses = await query_models_parallel(
+        COUNCIL_MODELS,
+        messages,
+        trace_id=conversation_id,
+        session_id=session_id,
+        span_name_prefix="stage1",
+        distinct_id=conversation_id
+    )
 
     # Format results
     stage1_results = []
@@ -29,12 +45,28 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
                 "response": response.get('content', '')
             })
 
+    # Track stage 1 span
+    analytics = get_analytics()
+    if analytics and conversation_id:
+        latency = time.time() - start_time
+        analytics.track_span(
+            distinct_id=conversation_id,
+            span_name="stage1_collect_responses",
+            input_state={"query": user_query},
+            output_state={"responses_count": len(stage1_results)},
+            trace_id=conversation_id,
+            session_id=session_id,
+            latency=latency
+        )
+
     return stage1_results
 
 
 async def stage2_collect_rankings(
     user_query: str,
-    stage1_results: List[Dict[str, Any]]
+    stage1_results: List[Dict[str, Any]],
+    conversation_id: Optional[str] = None,
+    session_id: Optional[str] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
@@ -42,10 +74,13 @@ async def stage2_collect_rankings(
     Args:
         user_query: The original user query
         stage1_results: Results from Stage 1
+        conversation_id: Optional conversation ID for analytics tracking
+        session_id: Optional session ID for analytics tracking
 
     Returns:
         Tuple of (rankings list, label_to_model mapping)
     """
+    start_time = time.time()
     # Create anonymized labels for responses (Response A, Response B, etc.)
     labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
 
@@ -95,7 +130,14 @@ Now provide your evaluation and ranking:"""
     messages = [{"role": "user", "content": ranking_prompt}]
 
     # Get rankings from all council models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    responses = await query_models_parallel(
+        COUNCIL_MODELS,
+        messages,
+        trace_id=conversation_id,
+        session_id=session_id,
+        span_name_prefix="stage2",
+        distinct_id=conversation_id
+    )
 
     # Format results
     stage2_results = []
@@ -109,13 +151,29 @@ Now provide your evaluation and ranking:"""
                 "parsed_ranking": parsed
             })
 
+    # Track stage 2 span
+    analytics = get_analytics()
+    if analytics and conversation_id:
+        latency = time.time() - start_time
+        analytics.track_span(
+            distinct_id=conversation_id,
+            span_name="stage2_collect_rankings",
+            input_state={"responses_count": len(stage1_results)},
+            output_state={"rankings_count": len(stage2_results)},
+            trace_id=conversation_id,
+            session_id=session_id,
+            latency=latency
+        )
+
     return stage2_results, label_to_model
 
 
 async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]]
+    stage2_results: List[Dict[str, Any]],
+    conversation_id: Optional[str] = None,
+    session_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
@@ -124,10 +182,13 @@ async def stage3_synthesize_final(
         user_query: The original user query
         stage1_results: Individual model responses from Stage 1
         stage2_results: Rankings from Stage 2
+        conversation_id: Optional conversation ID for analytics tracking
+        session_id: Optional session ID for analytics tracking
 
     Returns:
         Dict with 'model' and 'response' keys
     """
+    start_time = time.time()
     # Build comprehensive context for chairman
     stage1_text = "\n\n".join([
         f"Model: {result['model']}\nResponse: {result['response']}"
@@ -159,7 +220,29 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     messages = [{"role": "user", "content": chairman_prompt}]
 
     # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
+    response = await query_model(
+        CHAIRMAN_MODEL,
+        messages,
+        trace_id=conversation_id,
+        session_id=session_id,
+        span_name="stage3_chairman_synthesis",
+        distinct_id=conversation_id
+    )
+
+    # Track stage 3 span
+    analytics = get_analytics()
+    if analytics and conversation_id:
+        latency = time.time() - start_time
+        analytics.track_span(
+            distinct_id=conversation_id,
+            span_name="stage3_synthesize_final",
+            input_state={"stage1_count": len(stage1_results), "stage2_count": len(stage2_results)},
+            output_state={"success": response is not None},
+            trace_id=conversation_id,
+            session_id=session_id,
+            latency=latency,
+            is_error=response is None
+        )
 
     if response is None:
         # Fallback if chairman fails
@@ -255,12 +338,18 @@ def calculate_aggregate_rankings(
     return aggregate
 
 
-async def generate_conversation_title(user_query: str) -> str:
+async def generate_conversation_title(
+    user_query: str,
+    conversation_id: Optional[str] = None,
+    session_id: Optional[str] = None
+) -> str:
     """
     Generate a short title for a conversation based on the first user message.
 
     Args:
         user_query: The first user message
+        conversation_id: Optional conversation ID for analytics tracking
+        session_id: Optional session ID for analytics tracking
 
     Returns:
         A short title (3-5 words)
@@ -275,7 +364,15 @@ Title:"""
     messages = [{"role": "user", "content": title_prompt}]
 
     # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    response = await query_model(
+        "google/gemini-2.5-flash",
+        messages,
+        timeout=30.0,
+        trace_id=conversation_id,
+        session_id=session_id,
+        span_name="generate_title",
+        distinct_id=conversation_id
+    )
 
     if response is None:
         # Fallback to a generic title
@@ -293,18 +390,26 @@ Title:"""
     return title
 
 
-async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
+async def run_full_council(
+    user_query: str,
+    conversation_id: Optional[str] = None,
+    session_id: Optional[str] = None
+) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
 
     Args:
         user_query: The user's question
+        conversation_id: Optional conversation ID for analytics tracking
+        session_id: Optional session ID for analytics tracking
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
+    overall_start = time.time()
+
     # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query)
+    stage1_results = await stage1_collect_responses(user_query, conversation_id, session_id)
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -314,7 +419,9 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
         }, {}
 
     # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
+    stage2_results, label_to_model = await stage2_collect_rankings(
+        user_query, stage1_results, conversation_id, session_id
+    )
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
@@ -323,7 +430,9 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
     stage3_result = await stage3_synthesize_final(
         user_query,
         stage1_results,
-        stage2_results
+        stage2_results,
+        conversation_id,
+        session_id
     )
 
     # Prepare metadata
@@ -331,5 +440,23 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
         "label_to_model": label_to_model,
         "aggregate_rankings": aggregate_rankings
     }
+
+    # Track overall trace
+    analytics = get_analytics()
+    if analytics and conversation_id:
+        overall_latency = time.time() - overall_start
+        analytics.track_span(
+            distinct_id=conversation_id,
+            span_name="full_council_process",
+            input_state={"query": user_query},
+            output_state={
+                "stage1_responses": len(stage1_results),
+                "stage2_rankings": len(stage2_results),
+                "stage3_success": stage3_result.get("model") != "error"
+            },
+            trace_id=conversation_id,
+            session_id=session_id,
+            latency=overall_latency
+        )
 
     return stage1_results, stage2_results, stage3_result, metadata

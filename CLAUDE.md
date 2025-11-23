@@ -15,12 +15,15 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - Contains `CHAIRMAN_MODEL` (model that synthesizes final answer)
 - Uses environment variable `OPENROUTER_API_KEY` from `.env`
 - Backend runs on **port 8001** (NOT 8000 - user had another app on 8000)
+- PostHog configuration: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_ENABLED`
 
 **`openrouter.py`**
-- `query_model()`: Single async model query
+- `query_model()`: Single async model query with optional PostHog tracking
 - `query_models_parallel()`: Parallel queries using `asyncio.gather()`
 - Returns dict with 'content' and optional 'reasoning_details'
 - Graceful degradation: returns None on failure, continues with successful responses
+- Tracks latency, token usage, and errors to PostHog when enabled
+- Accepts optional parameters: `trace_id`, `session_id`, `span_name`, `distinct_id`
 
 **`council.py`** - The Core Logic
 - `stage1_collect_responses()`: Parallel queries to all council models
@@ -33,6 +36,17 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - `stage3_synthesize_final()`: Chairman synthesizes from all responses + rankings
 - `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section, handles both numbered lists and plain format
 - `calculate_aggregate_rankings()`: Computes average rank position across all peer evaluations
+- All functions accept optional `conversation_id` and `session_id` for analytics tracking
+- Tracks stage-level spans to PostHog when enabled
+
+**`posthog_analytics.py`** - LLM Analytics
+- `PostHogAnalytics`: Main class for tracking LLM events
+- `track_generation()`: Tracks individual LLM calls with full metadata
+- `track_span()`: Tracks stage-level operations
+- `initialize_analytics()`: Sets up global analytics instance
+- `get_analytics()`: Returns the global analytics instance
+- Fails gracefully if PostHog is disabled or unavailable
+- All tracking is non-blocking and asynchronous
 
 **`storage.py`**
 - JSON-based conversation storage in `data/conversations/`
@@ -44,6 +58,8 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - FastAPI app with CORS enabled for localhost:5173 and localhost:3000
 - POST `/api/conversations/{id}/message` returns metadata in addition to stages
 - Metadata includes: label_to_model mapping and aggregate_rankings
+- `startup_event()`: Initializes PostHog analytics on server startup
+- Passes `conversation_id` to all council functions for analytics tracking
 
 ### Frontend Structure (`frontend/src/`)
 
@@ -124,6 +140,22 @@ All ReactMarkdown components must be wrapped in `<div className="markdown-conten
 
 ### Model Configuration
 Models are hardcoded in `backend/config.py`. Chairman can be same or different from council members. The current default is Gemini as chairman per user preference.
+
+### PostHog LLM Analytics
+- **Optional Feature**: Disabled by default, controlled via `POSTHOG_ENABLED` environment variable
+- **Purpose**: Track LLM usage, performance, costs, and user behavior
+- **Configuration**: See `POSTHOG_SETUP.md` for detailed setup instructions
+- **What's Tracked**:
+  - Individual LLM generation events (`$ai_generation`) with model, tokens, latency, errors
+  - Stage-level spans (`$ai_span`) for Stage 1, Stage 2, Stage 3, and full process
+  - Conversation-level tracing via `conversation_id` as `$ai_trace_id`
+- **Data Flow**:
+  - `conversation_id` passed from `main.py` → `council.py` → `openrouter.py`
+  - Each LLM call tracked with input/output, tokens, latency, HTTP status
+  - Spans track stage duration and success/failure
+- **Privacy**: Analytics track full conversation content; use privacy mode or disable if needed
+- **Performance**: Non-blocking, fails gracefully, <10ms overhead per call
+- **Dependencies**: Requires `posthog` Python package (installed separately)
 
 ## Common Gotchas
 

@@ -24,3 +24,8 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Data directory for conversation storage
 DATA_DIR = "data/conversations"
+
+# PostHog LLM Analytics Configuration
+POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY")
+POSTHOG_HOST = os.getenv("POSTHOG_HOST", "https://us.i.posthog.com")
+POSTHOG_ENABLED = os.getenv("POSTHOG_ENABLED", "false").lower() in ("true", "1", "yes")
