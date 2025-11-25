@@ -4,6 +4,16 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
 
+/**
+ * Get PostHog distinct_id if available.
+ */
+function getPostHogDistinctId() {
+  if (typeof window !== 'undefined' && window.posthog) {
+    return window.posthog.get_distinct_id();
+  }
+  return null;
+}
+
 export const api = {
   /**
    * List all conversations.
@@ -50,13 +60,17 @@ export const api = {
    * Send a message in a conversation.
    */
   async sendMessage(conversationId, content) {
+    const headers = { 'Content-Type': 'application/json' };
+    const distinctId = getPostHogDistinctId();
+    if (distinctId) {
+      headers['X-PostHog-Distinct-ID'] = distinctId;
+    }
+
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ content }),
       }
     );
@@ -74,13 +88,17 @@ export const api = {
    * @returns {Promise<void>}
    */
   async sendMessageStream(conversationId, content, onEvent) {
+    const headers = { 'Content-Type': 'application/json' };
+    const distinctId = getPostHogDistinctId();
+    if (distinctId) {
+      headers['X-PostHog-Distinct-ID'] = distinctId;
+    }
+
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ content }),
       }
     );
