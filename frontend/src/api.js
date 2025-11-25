@@ -14,6 +14,16 @@ function getPostHogDistinctId() {
   return null;
 }
 
+/**
+ * Get PostHog session_id if available.
+ */
+function getPostHogSessionId() {
+  if (typeof window !== 'undefined' && window.posthog) {
+    return window.posthog.get_session_id();
+  }
+  return null;
+}
+
 export const api = {
   /**
    * List all conversations.
@@ -65,6 +75,10 @@ export const api = {
     if (distinctId) {
       headers['X-PostHog-Distinct-ID'] = distinctId;
     }
+    const sessionId = getPostHogSessionId();
+    if (sessionId) {
+      headers['X-PostHog-Session-ID'] = sessionId;
+    }
 
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message`,
@@ -92,6 +106,10 @@ export const api = {
     const distinctId = getPostHogDistinctId();
     if (distinctId) {
       headers['X-PostHog-Distinct-ID'] = distinctId;
+    }
+    const sessionId = getPostHogSessionId();
+    if (sessionId) {
+      headers['X-PostHog-Session-ID'] = sessionId;
     }
 
     const response = await fetch(

@@ -7,7 +7,8 @@ from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
 
 async def stage1_collect_responses(
     user_query: str,
-    posthog_distinct_id: str = None
+    posthog_distinct_id: str = None,
+    posthog_session_id: str = None
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
@@ -15,6 +16,7 @@ async def stage1_collect_responses(
     Args:
         user_query: The user's question
         posthog_distinct_id: Optional PostHog distinct ID for user tracking
+        posthog_session_id: Optional PostHog session ID for conversation linking
 
     Returns:
         List of dicts with 'model' and 'response' keys
@@ -22,7 +24,7 @@ async def stage1_collect_responses(
     messages = [{"role": "user", "content": user_query}]
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages, posthog_distinct_id=posthog_distinct_id)
+    responses = await query_models_parallel(COUNCIL_MODELS, messages, posthog_distinct_id=posthog_distinct_id, posthog_session_id=posthog_session_id)
 
     # Format results
     stage1_results = []
@@ -39,7 +41,8 @@ async def stage1_collect_responses(
 async def stage2_collect_rankings(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    posthog_distinct_id: str = None
+    posthog_distinct_id: str = None,
+    posthog_session_id: str = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
@@ -48,6 +51,7 @@ async def stage2_collect_rankings(
         user_query: The original user query
         stage1_results: Results from Stage 1
         posthog_distinct_id: Optional PostHog distinct ID for user tracking
+        posthog_session_id: Optional PostHog session ID for conversation linking
 
     Returns:
         Tuple of (rankings list, label_to_model mapping)
@@ -101,7 +105,7 @@ Now provide your evaluation and ranking:"""
     messages = [{"role": "user", "content": ranking_prompt}]
 
     # Get rankings from all council models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages, posthog_distinct_id=posthog_distinct_id)
+    responses = await query_models_parallel(COUNCIL_MODELS, messages, posthog_distinct_id=posthog_distinct_id, posthog_session_id=posthog_session_id)
 
     # Format results
     stage2_results = []
@@ -122,7 +126,8 @@ async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
     stage2_results: List[Dict[str, Any]],
-    posthog_distinct_id: str = None
+    posthog_distinct_id: str = None,
+    posthog_session_id: str = None
 ) -> Dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
@@ -132,6 +137,7 @@ async def stage3_synthesize_final(
         stage1_results: Individual model responses from Stage 1
         stage2_results: Rankings from Stage 2
         posthog_distinct_id: Optional PostHog distinct ID for user tracking
+        posthog_session_id: Optional PostHog session ID for conversation linking
 
     Returns:
         Dict with 'model' and 'response' keys
@@ -167,7 +173,7 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     messages = [{"role": "user", "content": chairman_prompt}]
 
     # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages, posthog_distinct_id=posthog_distinct_id)
+    response = await query_model(CHAIRMAN_MODEL, messages, posthog_distinct_id=posthog_distinct_id, posthog_session_id=posthog_session_id)
 
     if response is None:
         # Fallback if chairman fails
@@ -303,7 +309,8 @@ Title:"""
 
 async def run_full_council(
     user_query: str,
-    posthog_distinct_id: str = None
+    posthog_distinct_id: str = None,
+    posthog_session_id: str = None
 ) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
@@ -311,12 +318,13 @@ async def run_full_council(
     Args:
         user_query: The user's question
         posthog_distinct_id: Optional PostHog distinct ID for user tracking
+        posthog_session_id: Optional PostHog session ID for conversation linking
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
     # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query, posthog_distinct_id=posthog_distinct_id)
+    stage1_results = await stage1_collect_responses(user_query, posthog_distinct_id=posthog_distinct_id, posthog_session_id=posthog_session_id)
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -326,7 +334,7 @@ async def run_full_council(
         }, {}
 
     # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, posthog_distinct_id=posthog_distinct_id)
+    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, posthog_distinct_id=posthog_distinct_id, posthog_session_id=posthog_session_id)
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
@@ -336,7 +344,8 @@ async def run_full_council(
         user_query,
         stage1_results,
         stage2_results,
-        posthog_distinct_id=posthog_distinct_id
+        posthog_distinct_id=posthog_distinct_id,
+        posthog_session_id=posthog_session_id
     )
 
     # Prepare metadata

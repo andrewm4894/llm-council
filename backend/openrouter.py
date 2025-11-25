@@ -27,7 +27,8 @@ async def query_model(
     model: str,
     messages: List[Dict[str, str]],
     timeout: float = 120.0,
-    posthog_distinct_id: Optional[str] = None
+    posthog_distinct_id: Optional[str] = None,
+    posthog_session_id: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Query a single model via OpenRouter API.
@@ -37,6 +38,7 @@ async def query_model(
         messages: List of message dicts with 'role' and 'content'
         timeout: Request timeout in seconds
         posthog_distinct_id: Optional PostHog distinct ID to link LLM calls with users
+        posthog_session_id: Optional PostHog session ID to link conversations together
 
     Returns:
         Response dict with 'content' and optional 'reasoning_details', or None if failed
@@ -48,9 +50,12 @@ async def query_model(
             "messages": messages,
             "timeout": timeout,
         }
-        # Add PostHog distinct_id if provided (only works with PostHog-wrapped client)
-        if posthog_distinct_id and POSTHOG_API_KEY:
-            kwargs["posthog_distinct_id"] = posthog_distinct_id
+        # Add PostHog tracking if configured
+        if POSTHOG_API_KEY:
+            if posthog_distinct_id:
+                kwargs["posthog_distinct_id"] = posthog_distinct_id
+            if posthog_session_id:
+                kwargs["posthog_properties"] = {"$ai_session_id": posthog_session_id}
 
         response = await openai_client.chat.completions.create(**kwargs)
 
@@ -69,7 +74,8 @@ async def query_model(
 async def query_models_parallel(
     models: List[str],
     messages: List[Dict[str, str]],
-    posthog_distinct_id: Optional[str] = None
+    posthog_distinct_id: Optional[str] = None,
+    posthog_session_id: Optional[str] = None
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """
     Query multiple models in parallel.
@@ -78,6 +84,7 @@ async def query_models_parallel(
         models: List of OpenRouter model identifiers
         messages: List of message dicts to send to each model
         posthog_distinct_id: Optional PostHog distinct ID to link LLM calls with users
+        posthog_session_id: Optional PostHog session ID to link conversations together
 
     Returns:
         Dict mapping model identifier to response dict (or None if failed)
@@ -85,7 +92,7 @@ async def query_models_parallel(
     import asyncio
 
     # Create tasks for all models
-    tasks = [query_model(model, messages, posthog_distinct_id=posthog_distinct_id) for model in models]
+    tasks = [query_model(model, messages, posthog_distinct_id=posthog_distinct_id, posthog_session_id=posthog_session_id) for model in models]
 
     # Wait for all to complete
     responses = await asyncio.gather(*tasks)
