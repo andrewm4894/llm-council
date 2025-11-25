@@ -12,14 +12,14 @@ help:
 	@echo "  make clean      - Remove generated files"
 	@echo ""
 
-# Setup .env file
+# Setup .env file from .env.example
 setup:
 	@if [ -f .env ]; then \
-		echo ".env file already exists"; \
+		echo ".env file already exists. Edit it to update your API key."; \
 	else \
-		read -p "Enter your OpenRouter API key: " key; \
-		echo "OPENROUTER_API_KEY=$$key" > .env; \
-		echo ".env file created"; \
+		cp .env.example .env; \
+		echo "Created .env from .env.example"; \
+		echo "Edit .env and add your OpenRouter API key (https://openrouter.ai/)"; \
 	fi
 
 # Install all dependencies
