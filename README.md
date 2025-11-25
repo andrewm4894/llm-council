@@ -14,45 +14,34 @@ In a bit more detail, here is what happens when you submit a query:
 
 This project was 99% vibe coded as a fun Saturday hack because I wanted to explore and evaluate a number of LLMs side by side in the process of [reading books together with LLMs](https://x.com/karpathy/status/1990577951671509438). It's nice and useful to see multiple responses side by side, and also the cross-opinions of all LLMs on each other's outputs. I'm not going to support it in any way, it's provided here as is for other people's inspiration and I don't intend to improve it. Code is ephemeral now and libraries are over, ask your LLM to change it in whatever way you like.
 
-## Quick Start with GitHub Codespaces
+## GitHub Codespaces
 
-The fastest way to try LLM Council - no local setup required:
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/karpathy/llm-council)
 
-1. Click the button below to open in Codespaces:
+Edit `.env` with your [OpenRouter API key](https://openrouter.ai/), then run `make dev`.
 
-   [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/karpathy/llm-council)
-
-2. Once the codespace is ready, run:
-   ```bash
-   make setup    # Enter your OpenRouter API key
-   make dev      # Start the app
-   ```
-
-3. The frontend will open automatically in your browser.
-
-## Local Setup
+## Setup
 
 ### 1. Install Dependencies
 
-The project uses [uv](https://docs.astral.sh/uv/) for Python and npm for the frontend.
+The project uses [uv](https://docs.astral.sh/uv/) for project management.
 
-```bash
-make install
-```
-
-Or manually:
+**Backend:**
 ```bash
 uv sync
-cd frontend && npm install && cd ..
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+cd ..
 ```
 
 ### 2. Configure API Key
 
-```bash
-make setup
-```
+Create a `.env` file in the project root:
 
-Or manually create a `.env` file:
 ```bash
 OPENROUTER_API_KEY=sk-or-v1-...
 ```
@@ -76,17 +65,12 @@ CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 
 ## Running the Application
 
-**Option 1: Use Make (recommended)**
-```bash
-make dev
-```
-
-**Option 2: Use the start script**
+**Option 1: Use the start script**
 ```bash
 ./start.sh
 ```
 
-**Option 3: Run manually**
+**Option 2: Run manually**
 
 Terminal 1 (Backend):
 ```bash
@@ -100,18 +84,6 @@ npm run dev
 ```
 
 Then open http://localhost:5173 in your browser.
-
-## Available Make Commands
-
-```
-make help       # Show all commands
-make install    # Install all dependencies
-make setup      # Configure API key
-make dev        # Run both backend and frontend
-make backend    # Run backend only
-make frontend   # Run frontend only
-make clean      # Remove generated files
-```
 
 ## Tech Stack
 
