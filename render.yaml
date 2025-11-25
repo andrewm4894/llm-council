@@ -7,9 +7,9 @@ services:
     startCommand: uv run python -m backend.main
     envVars:
       - key: OPENROUTER_API_KEY
-        sync: false  # User must set this manually in Render dashboard
+        sync: false  # Set in Render dashboard
       - key: CORS_ORIGINS
-        value: https://llm-council.onrender.com
+        value: https://llm-council-uc3k.onrender.com  # <-- Update to your frontend URL
 
   # Frontend static site
   - type: web
@@ -19,4 +19,4 @@ services:
     staticPublishPath: frontend/dist
     envVars:
       - key: VITE_API_URL
-        value: https://llm-council-api.onrender.com
+        value: https://llm-council-api.onrender.com  # <-- Update to your backend URL
