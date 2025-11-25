@@ -1,8 +1,26 @@
-"""OpenRouter API client for making LLM requests."""
+"""OpenRouter API client for making LLM requests with PostHog analytics."""
 
-import httpx
 from typing import List, Dict, Any, Optional
-from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
+from openai import AsyncOpenAI
+from .config import OPENROUTER_API_KEY, POSTHOG_API_KEY, POSTHOG_HOST
+
+# Initialize OpenAI client configured for OpenRouter
+# If PostHog is configured, use the wrapped client for automatic LLM analytics
+if POSTHOG_API_KEY:
+    from posthog import Posthog
+    from posthog.ai.openai import AsyncOpenAI as PostHogAsyncOpenAI
+
+    posthog_client = Posthog(POSTHOG_API_KEY, host=POSTHOG_HOST)
+    openai_client = PostHogAsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
+        posthog_client=posthog_client,
+    )
+else:
+    openai_client = AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
+    )
 
 
 async def query_model(
@@ -21,32 +39,19 @@ async def query_model(
     Returns:
         Response dict with 'content' and optional 'reasoning_details', or None if failed
     """
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": model,
-        "messages": messages,
-    }
-
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                OPENROUTER_API_URL,
-                headers=headers,
-                json=payload
-            )
-            response.raise_for_status()
+        response = await openai_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            timeout=timeout,
+        )
 
-            data = response.json()
-            message = data['choices'][0]['message']
+        message = response.choices[0].message
 
-            return {
-                'content': message.get('content'),
-                'reasoning_details': message.get('reasoning_details')
-            }
+        return {
+            'content': message.content,
+            'reasoning_details': getattr(message, 'reasoning_details', None)
+        }
 
     except Exception as e:
         print(f"Error querying model {model}: {e}")

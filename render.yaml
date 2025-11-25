@@ -8,8 +8,12 @@ services:
     envVars:
       - key: OPENROUTER_API_KEY
         sync: false  # Set in Render dashboard
+      - key: POSTHOG_API_KEY
+        sync: false  # Optional: Set in Render dashboard for LLM analytics
+      - key: POSTHOG_HOST
+        value: https://us.i.posthog.com  # Or https://eu.i.posthog.com for EU
       - key: CORS_ORIGINS
-        value: https://llm-council.onrender.com  # <-- Update to your frontend URL
+        value: https://llm-council-uc3k.onrender.com  # <-- Update to your frontend URL
 
   # Frontend static site
   - type: web

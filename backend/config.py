@@ -8,6 +8,10 @@ load_dotenv()
 # OpenRouter API key
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+# PostHog for LLM analytics
+POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY")
+POSTHOG_HOST = os.getenv("POSTHOG_HOST", "https://us.i.posthog.com")
+
 # Council members - list of OpenRouter model identifiers
 COUNCIL_MODELS = [
     "openai/gpt-5.1",
